@@ -1,0 +1,101 @@
+# Vision Action Agent Configuration
+# Customize these settings for your environment
+
+# Screen capture settings
+screen_capture:
+  enable_failsafe: true
+  default_screenshot_format: "png"
+  screenshot_quality: 95
+  capture_cursor: false
+
+# OCR (Optical Character Recognition) settings
+ocr:
+  engine: "easyocr"  # Options: "easyocr", "tesseract"
+  languages: ["en"]  # Language codes for OCR
+  confidence_threshold: 0.3
+  preprocessing: true
+
+# Mouse control settings
+mouse:
+  enable_failsafe: true
+  default_pause: 0.5
+  movement_speed: 1.0
+  human_like_movement: true
+  click_delay: 0.1
+
+# Keyboard control settings
+keyboard:
+  default_pause: 0.1
+  typing_speed: 0.05
+  human_like_typing: true
+
+# UI element detection settings
+element_detection:
+  button_confidence: 0.7
+  text_field_confidence: 0.6
+  checkbox_confidence: 0.6
+  dropdown_confidence: 0.7
+  image_min_size: 1000
+  overlap_threshold: 0.5
+
+# Workflow execution settings
+workflow:
+  default_timeout: 30.0
+  default_retry_count: 3
+  step_pause: 0.5
+  continue_on_failure: false
+  save_screenshots_on_failure: true
+
+# PACS-specific settings
+pacs:
+  application_name: "PACS"
+  window_title_contains: "PACS"
+  default_patient_search_timeout: 10.0
+  image_load_timeout: 30.0
+  report_generation_timeout: 60.0
+  study_viewer_region: null  # Auto-detect
+  
+  # Common UI elements configuration
+  common_ui_elements:
+    patient_search:
+      type: "text_field"
+      text_contains: ["Patient", "Search", "ID"]
+      region: null
+    
+    search_button:
+      type: "button"
+      text_contains: ["Search", "Find", "Go"]
+      region: null
+    
+    patient_list:
+      type: "list"
+      text_contains: ["Patient List", "Results"]
+      region: null
+    
+    open_study:
+      type: "button"
+      text_contains: ["Open", "View", "Study"]
+      region: null
+    
+    study_viewer:
+      type: "image"
+      region: null
+      min_size: 50000
+    
+    report_area:
+      type: "text_field"
+      text_contains: ["Report", "Notes", "Findings"]
+      region: null
+    
+    save_report:
+      type: "button"
+      text_contains: ["Save", "Submit", "Finalize"]
+      region: null
+
+# Logging settings
+logging:
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  log_to_file: true
+  log_file_path: "logs/vision_action.log"
+  max_log_file_size: "10MB"
+  backup_count: 5
