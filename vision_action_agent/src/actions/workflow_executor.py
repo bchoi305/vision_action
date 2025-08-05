@@ -283,6 +283,92 @@ class WorkflowExecutor:
         
         return self.mouse.scroll(x, y, scroll_direction, amount)
     
+    def execute_loop_action(self, step: WorkflowStep) -> bool:
+        """
+        Execute a loop action.
+        
+        Args:
+            step: The WorkflowStep object containing loop parameters.
+            
+        Returns:
+            True if the loop completed successfully, False otherwise.
+        """
+        params = step.parameters
+        loop_type = params.get('loop_type')
+        loop_params = params.get('loop_params', {})
+        loop_steps_data = params.get('steps', [])
+
+        if not loop_steps_data:
+            logger.warning(f"Loop step '{step.id}' has no sub-steps defined.")
+            return True
+
+        loop_steps = [WorkflowStep(**sd) for sd in loop_steps_data]
+
+        if loop_type == 'for_range':
+            start = loop_params.get('start', 0)
+            end = loop_params.get('end', 0)
+            step_val = loop_params.get('step', 1)
+            variable_name = loop_params.get('variable_name', 'i')
+
+            for i in range(start, end, step_val):
+                logger.info(f"Executing loop '{step.id}': iteration {i}")
+                self.set_workflow_variable(variable_name, i)
+                for sub_step in loop_steps:
+                    if not self.execute_step(sub_step):
+                        logger.error(f"Loop '{step.id}' failed at iteration {i}, sub-step '{sub_step.id}'.")
+                        return False
+            return True
+
+        elif loop_type == 'while_condition':
+            condition_type = loop_params.get('condition_type')
+            condition_params = loop_params.get('condition_params', {})
+            max_iterations = loop_params.get('max_iterations', 100)
+            iteration_count = 0
+
+            while iteration_count < max_iterations:
+                iteration_count += 1
+                logger.info(f"Executing loop '{step.id}': iteration {iteration_count}")
+                
+                # Evaluate condition
+                condition_result = False
+                if condition_type == 'element_exists':
+                    element_text = condition_params.get('text')
+                    screenshot = self.screen_capture.capture_full_screen()
+                    elements = self.element_detector.find_element_by_text(screenshot, element_text)
+                    condition_result = len(elements) > 0
+                elif condition_type == 'text_exists':
+                    text = condition_params.get('text')
+                    region = condition_params.get('region')
+                    if region:
+                        capture_region = CaptureRegion(**region)
+                        screenshot = self.screen_capture.capture_region(capture_region)
+                    else:
+                        screenshot = self.screen_capture.capture_full_screen()
+                    ocr_result = self.ocr_detector.extract_text(screenshot)
+                    condition_result = text.lower() in ocr_result.raw_text.lower()
+                elif condition_type == 'variable_equals':
+                    var_name = condition_params.get('variable')
+                    expected_value = condition_params.get('value')
+                    actual_value = self.get_workflow_variable(var_name)
+                    condition_result = actual_value == expected_value
+                
+                if not condition_result:
+                    logger.info(f"Loop '{step.id}' condition met, exiting loop.")
+                    break
+
+                for sub_step in loop_steps:
+                    if not self.execute_step(sub_step):
+                        logger.error(f"Loop '{step.id}' failed at iteration {iteration_count}, sub-step '{sub_step.id}'.")
+                        return False
+            else:
+                logger.warning(f"Loop '{step.id}' reached max iterations ({max_iterations}) without condition met.")
+                return False # Loop failed because max iterations reached
+            return True
+
+        else:
+            logger.error(f"Unknown loop type: {loop_type}")
+            return False
+
     def execute_conditional_action(self, step: WorkflowStep) -> bool:
         """Execute conditional action."""
         params = step.parameters
@@ -373,6 +459,8 @@ class WorkflowExecutor:
                 success = self.execute_scroll_action(step)
             elif step.action_type == ActionType.CONDITIONAL:
                 success = self.execute_conditional_action(step)
+            elif step.action_type == ActionType.LOOP:
+                success = self.execute_loop_action(step)
             elif step.action_type == ActionType.CUSTOM:
                 success = self.execute_custom_action(step)
             else:
@@ -508,57 +596,4 @@ class WorkflowExecutor:
         except Exception as e:
             logger.error(f"Failed to save workflow to {filepath}: {e}")
     
-    def create_pacs_workflow_template(self) -> List[WorkflowStep]:
-        """Create a template workflow for PACS interaction."""
-        steps = [
-            WorkflowStep(
-                id="open_pacs",
-                action_type=ActionType.CLICK,
-                parameters={"element_text": "PACS"},
-                description="Open PACS application"
-            ),
-            WorkflowStep(
-                id="wait_for_pacs_load",
-                action_type=ActionType.WAIT,
-                parameters={"wait_for_element": {"text": "Patient List", "timeout": 30}},
-                description="Wait for PACS to load"
-            ),
-            WorkflowStep(
-                id="search_patient",
-                action_type=ActionType.CLICK,
-                parameters={"element_text": "Patient Search"},
-                description="Click patient search"
-            ),
-            WorkflowStep(
-                id="enter_patient_id",
-                action_type=ActionType.TYPE,
-                parameters={"text": "{{patient_id}}", "clear_first": True},
-                description="Enter patient ID"
-            ),
-            WorkflowStep(
-                id="click_search",
-                action_type=ActionType.CLICK,
-                parameters={"element_text": "Search"},
-                description="Click search button"
-            ),
-            WorkflowStep(
-                id="open_study",
-                action_type=ActionType.CLICK,
-                parameters={"element_text": "Open Study"},
-                description="Open the study"
-            ),
-            WorkflowStep(
-                id="wait_for_images",
-                action_type=ActionType.WAIT,
-                parameters={"duration": 5},
-                description="Wait for images to load"
-            ),
-            WorkflowStep(
-                id="take_screenshot",
-                action_type=ActionType.SCREENSHOT,
-                parameters={"filepath": "pacs_screenshot.png"},
-                description="Take screenshot of loaded study"
-            )
-        ]
-        
-        return steps
+    

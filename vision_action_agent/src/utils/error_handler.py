@@ -19,7 +19,7 @@ class ErrorCategory(Enum):
     MOUSE_ACTION = "mouse_action"
     KEYBOARD_ACTION = "keyboard_action"
     WORKFLOW = "workflow"
-    PACS = "pacs"
+    
     CONFIGURATION = "configuration"
     SYSTEM = "system"
 
@@ -78,11 +78,7 @@ class ErrorHandler:
                 self._retry_failed_step,
                 self._skip_optional_step
             ],
-            ErrorCategory.PACS: [
-                self._wait_for_pacs_response,
-                self._refresh_pacs_interface,
-                self._restart_pacs_session
-            ]
+            
         }
     
     def handle_error(self, error: Exception, category: ErrorCategory, 
@@ -345,49 +341,7 @@ class ErrorHandler:
         
         return False
     
-    def _wait_for_pacs_response(self, error_info: ErrorInfo) -> bool:
-        """Wait for PACS system to respond."""
-        context = error_info.context or {}
-        wait_time = context.get('pacs_wait_time', 5.0)
-        
-        if wait_time <= 30.0:  # Don't wait more than 30 seconds
-            logger.info(f"Waiting {wait_time}s for PACS response")
-            time.sleep(wait_time)
-            context['pacs_wait_time'] = wait_time * 1.5  # Increase wait time for next attempt
-            return True
-        
-        return False
     
-    def _refresh_pacs_interface(self, error_info: ErrorInfo) -> bool:
-        """Refresh PACS interface."""
-        context = error_info.context or {}
-        
-        if not context.get('pacs_refreshed'):
-            try:
-                import pyautogui
-                # Try F5 refresh
-                pyautogui.press('f5')
-                time.sleep(3.0)
-                
-                context['pacs_refreshed'] = True
-                logger.info("Refreshed PACS interface")
-                return True
-            except Exception as e:
-                logger.warning(f"Could not refresh PACS interface: {e}")
-        
-        return False
-    
-    def _restart_pacs_session(self, error_info: ErrorInfo) -> bool:
-        """Restart PACS session (last resort)."""
-        context = error_info.context or {}
-        
-        if not context.get('pacs_restart_attempted'):
-            logger.warning("PACS restart required - this should be handled by higher-level logic")
-            context['pacs_restart_attempted'] = True
-            # This would need to be implemented by the calling application
-            return False
-        
-        return False
     
     def register_recovery_strategy(self, category: ErrorCategory, strategy: Callable):
         """Register a custom recovery strategy."""

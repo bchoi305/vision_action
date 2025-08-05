@@ -1,101 +1,99 @@
 # Vision Action Agent Configuration
-# Customize these settings for your environment
+
+# General settings for the agent
+general:
+  # Default timeout for actions in seconds
+  default_timeout: 30.0
+  # Default number of retries for failed actions
+  default_retry_count: 3
 
 # Screen capture settings
 screen_capture:
+  # Enable failsafe (move mouse to corner to stop)
   enable_failsafe: true
+  # Default format for saving screenshots
   default_screenshot_format: "png"
+  # Quality of saved screenshots (1-100)
   screenshot_quality: 95
+  # Whether to capture the cursor in screenshots
   capture_cursor: false
 
 # OCR (Optical Character Recognition) settings
 ocr:
-  engine: "easyocr"  # Options: "easyocr", "tesseract"
-  languages: ["en"]  # Language codes for OCR
+  # OCR engine to use ("easyocr" or "tesseract")
+  engine: "easyocr"
+  # Languages for OCR
+  languages: ["en"]
+  # Confidence threshold for OCR results (0.0-1.0)
   confidence_threshold: 0.3
+  # Whether to preprocess images for better OCR results
   preprocessing: true
 
 # Mouse control settings
 mouse:
+  # Enable failsafe (move mouse to corner to stop)
   enable_failsafe: true
+  # Default pause between mouse actions in seconds
   default_pause: 0.5
+  # Speed multiplier for mouse movements (0.1-2.0)
   movement_speed: 1.0
+  # Whether to use human-like curved mouse movements
   human_like_movement: true
+  # Delay between clicks in a multi-click action
   click_delay: 0.1
 
 # Keyboard control settings
 keyboard:
+  # Default pause between key actions in seconds
   default_pause: 0.1
+  # Delay between individual characters when typing
   typing_speed: 0.05
+  # Whether to use human-like typing delays
   human_like_typing: true
 
 # UI element detection settings
 element_detection:
+  # Confidence threshold for detecting buttons (0.0-1.0)
   button_confidence: 0.7
+  # Confidence threshold for detecting text fields (0.0-1.0)
   text_field_confidence: 0.6
+  # Confidence threshold for detecting checkboxes (0.0-1.0)
   checkbox_confidence: 0.6
+  # Confidence threshold for detecting dropdowns (0.0-1.0)
   dropdown_confidence: 0.7
+  # Minimum size in pixels for an element to be considered an image
   image_min_size: 1000
+  # Overlap threshold for merging overlapping UI elements (0.0-1.0)
   overlap_threshold: 0.5
 
 # Workflow execution settings
 workflow:
-  default_timeout: 30.0
-  default_retry_count: 3
+  # Pause between workflow steps in seconds
   step_pause: 0.5
+  # Whether to continue executing a workflow if a step fails
   continue_on_failure: false
+  # Whether to save a screenshot when a workflow step fails
   save_screenshots_on_failure: true
-
-# PACS-specific settings
-pacs:
-  application_name: "PACS"
-  window_title_contains: "PACS"
-  default_patient_search_timeout: 10.0
-  image_load_timeout: 30.0
-  report_generation_timeout: 60.0
-  study_viewer_region: null  # Auto-detect
-  
-  # Common UI elements configuration
-  common_ui_elements:
-    patient_search:
-      type: "text_field"
-      text_contains: ["Patient", "Search", "ID"]
-      region: null
-    
-    search_button:
-      type: "button"
-      text_contains: ["Search", "Find", "Go"]
-      region: null
-    
-    patient_list:
-      type: "list"
-      text_contains: ["Patient List", "Results"]
-      region: null
-    
-    open_study:
-      type: "button"
-      text_contains: ["Open", "View", "Study"]
-      region: null
-    
-    study_viewer:
-      type: "image"
-      region: null
-      min_size: 50000
-    
-    report_area:
-      type: "text_field"
-      text_contains: ["Report", "Notes", "Findings"]
-      region: null
-    
-    save_report:
-      type: "button"
-      text_contains: ["Save", "Submit", "Finalize"]
-      region: null
 
 # Logging settings
 logging:
-  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  level: "INFO"
+  # Whether to log to a file
   log_to_file: true
+  # Path to the log file
   log_file_path: "logs/vision_action.log"
+  # Maximum size of the log file before rotation
   max_log_file_size: "10MB"
+  # Number of backup log files to keep
   backup_count: 5
+
+# Application-specific configurations
+applications:
+  # Example configuration for a specific application
+  # - name: "My Application"
+  #   # Window title of the application
+  #   window_title_contains: "My App"
+  #   # You can override any of the general settings here
+  #   mouse:
+  #     movement_speed: 1.5

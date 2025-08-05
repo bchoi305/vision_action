@@ -1,3 +1,4 @@
+import os
 import cv2
 import numpy as np
 from typing import List, Dict, Optional, Tuple, Union
@@ -34,29 +35,32 @@ class DetectionResult:
     processing_time: float
 
 class ElementDetector:
-    def __init__(self, ocr_detector: Optional[OCRTextDetector] = None):
+    def __init__(self, ocr_detector: Optional[OCRTextDetector] = None, template_dir: str = "templates"):
         self.ocr_detector = ocr_detector or OCRTextDetector()
-        
-        # Template images for common UI elements (can be loaded from files)
         self.templates = {}
-        self._load_templates()
+        self._load_templates(template_dir)
     
-    def _load_templates(self):
-        """Load template images for UI element detection."""
-        # In a real implementation, you would load these from files
-        # For now, we'll use programmatically generated templates
-        
-        # Button template (rounded rectangle)
-        button_template = np.zeros((30, 100, 3), dtype=np.uint8)
-        cv2.rectangle(button_template, (5, 5), (95, 25), (200, 200, 200), -1)
-        cv2.rectangle(button_template, (5, 5), (95, 25), (100, 100, 100), 2)
-        self.templates[ElementType.BUTTON] = button_template
-        
-        # Checkbox template
-        checkbox_template = np.zeros((20, 20, 3), dtype=np.uint8)
-        cv2.rectangle(checkbox_template, (2, 2), (18, 18), (255, 255, 255), -1)
-        cv2.rectangle(checkbox_template, (2, 2), (18, 18), (0, 0, 0), 2)
-        self.templates[ElementType.CHECKBOX] = checkbox_template
+    def _load_templates(self, template_dir: str = "templates"):
+        """Load template images for UI element detection from a directory."""
+        self.templates = {}
+        if not os.path.exists(template_dir):
+            logger.warning(f"Template directory not found: {template_dir}")
+            return
+
+        for filename in os.listdir(template_dir):
+            if filename.endswith(('.png', '.jpg', '.jpeg', '.bmp')):
+                filepath = os.path.join(template_dir, filename)
+                try:
+                    template_image = cv2.imread(filepath, cv2.IMREAD_COLOR)
+                    if template_image is not None:
+                        # Use filename (without extension) as the template name
+                        template_name = os.path.splitext(filename)[0]
+                        self.templates[template_name] = template_image
+                        logger.info(f"Loaded template: {template_name} from {filepath}")
+                    else:
+                        logger.warning(f"Could not load image file: {filepath}")
+                except Exception as e:
+                    logger.error(f"Error loading template {filepath}: {e}")
     
     def detect_buttons(self, image: np.ndarray) -> List[UIElement]:
         """Detect button elements in the image."""
@@ -81,24 +85,29 @@ class ElementDetector:
             x, y, w, h = cv2.boundingRect(contour)
             aspect_ratio = w / h
             
-            # Check if it looks like a button (reasonable aspect ratio)
+            # Check if it looks like a button (reasonable aspect ratio and color uniformity)
             if 0.3 <= aspect_ratio <= 10:
-                center = (x + w // 2, y + h // 2)
-                
-                # Extract text from this region using OCR
-                button_region = image[y:y+h, x:x+w]
-                text_elements = self.ocr_detector.extract_text(button_region).elements
-                button_text = " ".join([elem.text for elem in text_elements]) if text_elements else None
-                
-                button = UIElement(
-                    element_type=ElementType.BUTTON,
-                    bbox=(x, y, w, h),
-                    center=center,
-                    confidence=0.7,  # Base confidence
-                    text=button_text,
-                    attributes={"area": area, "aspect_ratio": aspect_ratio}
-                )
-                buttons.append(button)
+                # Check color uniformity (low standard deviation in color channels)
+                roi_color = image[y:y+h, x:x+w]
+                if roi_color.size > 0:
+                    std_dev_color = np.std(roi_color)
+                    if std_dev_color < 40: # Threshold for color uniformity
+                        center = (x + w // 2, y + h // 2)
+                        
+                        # Extract text from this region using OCR
+                        button_region = image[y:y+h, x:x+w]
+                        text_elements = self.ocr_detector.extract_text(button_region).elements
+                        button_text = " ".join([elem.text for elem in text_elements]) if text_elements else None
+                        
+                        button = UIElement(
+                            element_type=ElementType.BUTTON,
+                            bbox=(x, y, w, h),
+                            center=center,
+                            confidence=0.7,  # Base confidence
+                            text=button_text,
+                            attributes={"area": area, "aspect_ratio": aspect_ratio, "std_dev_color": std_dev_color}
+                        )
+                        buttons.append(button)
         
         return buttons
     
@@ -120,21 +129,25 @@ class ElementDetector:
             x, y, w, h = cv2.boundingRect(contour)
             aspect_ratio = w / h
             
-            # Text fields are typically wide and short
+            # Text fields are typically wide and short with a clear background or border
             if aspect_ratio > 2 and h < 50:
                 center = (x + w // 2, y + h // 2)
                 
-                # Check if the region looks like a text field (light background)
+                # Check for clear background (high mean intensity) or a distinct border
                 roi = gray[y:y+h, x:x+w]
                 mean_intensity = np.mean(roi)
                 
-                if mean_intensity > 200:  # Light background typical of text fields
+                # Simple border detection: check intensity variance near edges
+                border_variance = np.var(gray[y:y+h, x:x+5]) + np.var(gray[y:y+h, x+w-5:x+w]) + \
+                                  np.var(gray[y:y+5, x:x+w]) + np.var(gray[y+h-5:y+h, x:x+w])
+
+                if mean_intensity > 200 or border_variance > 500:  # Light background or significant border
                     text_field = UIElement(
                         element_type=ElementType.TEXT_FIELD,
                         bbox=(x, y, w, h),
                         center=center,
                         confidence=0.6,
-                        attributes={"mean_intensity": mean_intensity}
+                        attributes={"mean_intensity": mean_intensity, "border_variance": border_variance}
                     )
                     text_fields.append(text_field)
         
@@ -208,7 +221,7 @@ class ElementDetector:
         return dropdowns
     
     def detect_images(self, image: np.ndarray, min_size: int = 1000) -> List[UIElement]:
-        """Detect image elements (like medical images in PACS)."""
+        """Detect image elements."""
         images = []
         
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -251,6 +264,46 @@ class ElementDetector:
                     images.append(img_element)
         
         return images
+
+    def detect_unknown_elements(self, image: np.ndarray) -> List[UIElement]:
+        """
+        Detect general rectangular regions that might be UI elements but don't fit other categories.
+        These are potential candidates for further classification or interaction.
+        """
+        unknown_elements = []
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Use a combination of thresholding and contour detection
+        _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if 100 < area < 100000:  # Filter by reasonable size
+                x, y, w, h = cv2.boundingRect(contour)
+                aspect_ratio = w / h
+
+                # Filter by aspect ratio (avoid very thin or very wide elements)
+                if 0.1 < aspect_ratio < 10:
+                    center = (x + w // 2, y + h // 2)
+                    roi = image[y:y+h, x:x+w]
+                    
+                    # Check for some visual complexity (not just a solid block)
+                    if roi.size > 0:
+                        std_dev_color = np.std(roi)
+                        if std_dev_color > 10: # Ensure it's not just a uniform background patch
+                            unknown_elements.append(UIElement(
+                                element_type=ElementType.UNKNOWN,
+                                bbox=(x, y, w, h),
+                                center=center,
+                                confidence=0.5, # Default confidence
+                                attributes={
+                                    "area": area,
+                                    "aspect_ratio": aspect_ratio,
+                                    "std_dev_color": std_dev_color
+                                }
+                            ))
+        return unknown_elements
     
     def detect_all_elements(self, image: np.ndarray) -> DetectionResult:
         """Detect all types of UI elements in the image."""
@@ -272,6 +325,7 @@ class ElementDetector:
             all_elements.extend(checkboxes)
             all_elements.extend(dropdowns)
             all_elements.extend(images)
+            all_elements.extend(self.detect_unknown_elements(image))
             
             # Remove overlapping elements (keep higher confidence)
             all_elements = self._remove_overlapping_elements(all_elements)
@@ -342,7 +396,59 @@ class ElementDetector:
                 matches.append(element)
         
         return matches
-    
+
+    def find_element_by_image(self, image: np.ndarray, template_name: str, confidence_threshold: float = 0.8) -> List[UIElement]:
+        """
+        Find UI elements by matching a template image.
+        
+        Args:
+            image: The screenshot (numpy array) to search within.
+            template_name: The name of the pre-loaded template image (e.g., 'login_button_icon').
+            confidence_threshold: The minimum confidence score to consider a match.
+            
+        Returns:
+            A list of UIElement objects found, or an empty list if none are found.
+        """
+        if template_name not in self.templates:
+            logger.warning(f"Template '{template_name}' not found in loaded templates.")
+            return []
+
+        template = self.templates[template_name]
+        
+        # Convert images to grayscale for template matching
+        img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+
+        # Perform template matching
+        res = cv2.matchTemplate(img_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+        loc = np.where(res >= confidence_threshold)
+
+        found_elements = []
+        for pt in zip(*loc[::-1]):  # Swap x and y for correct coordinates
+            x, y = pt[0], pt[1]
+            w, h = template.shape[1], template.shape[0]
+            center = (x + w // 2, y + h // 2)
+            confidence = res[pt[1], pt[0]]
+
+            # Create a UIElement for the found template
+            found_elements.append(UIElement(
+                element_type=ElementType.ICON,  # Assuming image templates are icons
+                bbox=(x, y, w, h),
+                center=center,
+                confidence=confidence,
+                attributes={"template_name": template_name}
+            ))
+        
+        # Remove overlapping detections
+        found_elements = self._remove_overlapping_elements(found_elements, overlap_threshold=0.1) # Lower overlap for icons
+
+        if found_elements:
+            logger.info(f"Found {len(found_elements)} instances of template '{template_name}' with confidence >= {confidence_threshold:.2f}")
+        else:
+            logger.debug(f"No instances of template '{template_name}' found with confidence >= {confidence_threshold:.2f}")
+
+        return found_elements
+
     def visualize_elements(self, image: np.ndarray, elements: List[UIElement]) -> np.ndarray:
         """Draw detected elements on the image for visualization."""
         vis_image = image.copy()
@@ -354,7 +460,8 @@ class ElementDetector:
             ElementType.CHECKBOX: (0, 0, 255),    # Red
             ElementType.DROPDOWN: (255, 255, 0),  # Cyan
             ElementType.IMAGE: (255, 0, 255),     # Magenta
-            ElementType.UNKNOWN: (128, 128, 128)  # Gray
+            ElementType.UNKNOWN: (128, 128, 128), # Gray
+            ElementType.ICON: (0, 255, 255)       # Yellow
         }
         
         for element in elements:
@@ -373,3 +480,72 @@ class ElementDetector:
             cv2.putText(vis_image, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
         
         return vis_image
+
+    def analyze_layout(self, elements: List[UIElement], proximity_threshold: int = 20) -> Dict[str, Any]:
+        """
+        Analyzes the spatial relationships between UI elements to infer layout structure.
+        Groups elements that are close to each other horizontally or vertically.
+        
+        Args:
+            elements: A list of UIElement objects.
+            proximity_threshold: Maximum distance (in pixels) to consider elements as proximate.
+            
+        Returns:
+            A dictionary describing the detected layout groups.
+        """
+        if not elements:
+            return {"groups": []}
+
+        # Sort elements by their top-left corner for consistent processing
+        sorted_elements = sorted(elements, key=lambda e: (e.bbox[1], e.bbox[0]))
+
+        groups = []
+        used_indices = set()
+
+        for i, elem1 in enumerate(sorted_elements):
+            if i in used_indices:
+                continue
+
+            current_group = [elem1]
+            used_indices.add(i)
+
+            for j, elem2 in enumerate(sorted_elements):
+                if i == j or j in used_indices:
+                    continue
+
+                # Check for horizontal proximity and vertical alignment
+                # Elements are horizontally proximate if their horizontal distance is within threshold
+                # And their vertical centers are aligned (within threshold)
+                horizontal_distance = abs((elem1.bbox[0] + elem1.bbox[2]) - elem2.bbox[0])
+                vertical_alignment = abs(elem1.center[1] - elem2.center[1])
+
+                if horizontal_distance < proximity_threshold and vertical_alignment < proximity_threshold:
+                    current_group.append(elem2)
+                    used_indices.add(j)
+                    continue
+
+                # Check for vertical proximity and horizontal alignment
+                # Elements are vertically proximate if their vertical distance is within threshold
+                # And their horizontal centers are aligned (within threshold)
+                vertical_distance = abs((elem1.bbox[1] + elem1.bbox[3]) - elem2.bbox[1])
+                horizontal_alignment = abs(elem1.center[0] - elem2.center[0])
+
+                if vertical_distance < proximity_threshold and horizontal_alignment < proximity_threshold:
+                    current_group.append(elem2)
+                    used_indices.add(j)
+
+            if len(current_group) > 1:
+                # Calculate bounding box for the group
+                min_x = min(e.bbox[0] for e in current_group)
+                min_y = min(e.bbox[1] for e in current_group)
+                max_x = max(e.bbox[0] + e.bbox[2] for e in current_group)
+                max_y = max(e.bbox[1] + e.bbox[3] for e in current_group)
+                
+                groups.append({
+                    "type": "group",
+                    "elements": [e.text or e.element_type.value for e in current_group],
+                    "bbox": (min_x, min_y, max_x - min_x, max_y - min_y)
+                })
+        
+        logger.info(f"Analyzed layout: Found {len(groups)} element groups.")
+        return {"groups": groups}

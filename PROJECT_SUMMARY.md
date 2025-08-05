@@ -2,25 +2,17 @@
 
 ## Overview
 
-The Vision Action Agent is a comprehensive Python-based automation system designed specifically for PACS (Picture Archiving and Communication System) workflows and medical imaging applications. It combines computer vision, OCR, and automated UI interaction to streamline radiological reading workflows.
+The Vision Action Agent is a comprehensive Python-based automation system designed for general-purpose UI automation. It combines computer vision, OCR, and automated UI interaction to streamline workflows across various applications.
 
 ## 🎯 Key Features
 
 ### Core Capabilities
 - **Real-time Screen Capture**: High-performance screenshot capture with region selection
 - **Advanced OCR**: Dual-engine text recognition (EasyOCR + Tesseract)
-- **Smart UI Detection**: Automatic detection of buttons, text fields, dropdowns, and medical images
+- **Smart UI Detection**: Automatic detection of buttons, text fields, dropdowns, and other UI elements
 - **Precise Automation**: Human-like mouse and keyboard control with error recovery
 - **Workflow Engine**: YAML-based workflow definition and execution
-- **PACS Optimization**: Specialized features for medical imaging systems
-
-### PACS-Specific Features
-- Patient search automation
-- Study opening and navigation
-- Medical image capture and annotation
-- Report interface automation
-- Workflow templates for chest X-rays
-- Integration readiness for vision-language models
+- **Integration Readiness**: Designed for easy integration with vision-language models
 
 ## 📁 Project Structure
 
@@ -43,7 +35,6 @@ vision_action_agent/
 │       └── error_handler.py      # Error handling and recovery
 ├── examples/
 │   ├── basic_usage.py            # Basic usage examples
-│   ├── pacs_automation.py        # PACS workflow automation
 │   └── config.yaml               # Configuration template
 ├── tests/                        # Test suite
 ├── docs/                         # Documentation
@@ -79,23 +70,13 @@ agent = VisionActionAgent()
 screenshot = agent.capture_screen()
 
 # Find and click UI elements
-agent.click_element("Open Study")
+agent.click_element("Submit")
 
 # Type text
-agent.type_text("Patient ID: 12345")
+agent.type_text("username", "admin")
 
 # Execute workflows
 workflow_result = agent.execute_workflow(workflow_steps)
-```
-
-### PACS Automation Example
-```python
-# Create PACS workflow
-pacs_automation = PACSAutomation()
-patient_ids = ["CXR001", "CXR002", "CXR003"]
-
-# Process patients automatically
-results = pacs_automation.process_patient_list(patient_ids)
 ```
 
 ## 🏗️ Architecture Design
@@ -103,7 +84,7 @@ results = pacs_automation.process_patient_list(patient_ids)
 ### Modular Architecture
 - **Vision Layer**: Screen capture, OCR, element detection
 - **Action Layer**: Mouse/keyboard control, workflow execution
-- **Configuration Layer**: Settings management, PACS customization
+- **Configuration Layer**: Settings management
 - **Error Handling**: Automatic recovery and retry mechanisms
 
 ### Technology Stack
@@ -123,12 +104,6 @@ ocr:
   languages: ["en"]
   confidence_threshold: 0.3
 
-# PACS Settings
-pacs:
-  application_name: "PACS Viewer"
-  window_title_contains: "PACS"
-  default_patient_search_timeout: 10.0
-
 # Workflow Settings
 workflow:
   default_timeout: 30.0
@@ -144,36 +119,24 @@ workflow:
 - **Context-Aware Recovery**: Error handling specific to different operation types
 - **Comprehensive Logging**: Detailed error tracking and performance monitoring
 
-### Recovery Strategies
-- Screen capture fallback methods
-- Alternative OCR engines
-- Coordinate adjustment for DPI scaling
-- PACS-specific timeout handling
-
 ## 📊 Workflow System
 
 ### YAML-Based Workflows
 ```yaml
 steps:
-  - id: "search_patient"
+  - id: "login"
     action_type: "click"
     parameters:
-      element_text: "Patient Search"
-    description: "Open patient search"
-    
-  - id: "enter_patient_id"
+      element_text: "Login"
+    description: "Click the login button"
+
+  - id: "enter_username"
     action_type: "type"
     parameters:
-      text: "{{patient_id}}"
-      clear_first: true
-    description: "Enter patient ID"
+      text: "admin"
+      element_text: "Username"
+    description: "Enter the username"
 ```
-
-### Built-in PACS Workflows
-- Patient search and selection
-- Study opening and navigation
-- Image capture and processing
-- Report generation preparation
 
 ## 🔮 AI Integration Ready
 
@@ -182,77 +145,24 @@ The system is designed for easy integration with vision-language models:
 
 ```python
 # Future AI integration example
-def analyze_chest_xray(image_path):
+def analyze_ui(image_path):
     # Load your vision-language model
     model = load_vlm_model()
-    
+
     # Analyze captured image
-    findings = model.analyze(image_path, 
-                           prompt="Analyze this chest X-ray for abnormalities")
-    
-    # Generate report
-    report = model.generate_report(findings)
-    
-    return report
+    analysis = model.analyze(image_path,
+                           prompt="Analyze this UI screenshot and identify all interactive elements.")
+
+    return analysis
 ```
 
 ## 🎯 Use Cases
 
 ### Primary Applications
-1. **Automated PACS Navigation**: Streamline patient study access
-2. **Batch Processing**: Process multiple patients efficiently
-3. **Quality Assurance**: Consistent workflow execution
-4. **Training Data Collection**: Capture images for AI model training
-5. **Report Automation**: Prepare reports for AI analysis
-
-### Medical Imaging Workflows
-- Chest X-ray reading workflows
-- CT scan navigation
-- MRI study processing
-- Ultrasound image capture
-- Mammography screening
-
-## 📈 Performance Features
-
-### Optimization
-- **Parallel Processing**: Concurrent workflow execution
-- **Caching**: Template and configuration caching
-- **Memory Management**: Efficient image handling
-- **Speed Controls**: Configurable automation speeds
-
-### Scalability
-- Batch patient processing
-- Queue management for large workflows
-- Resource monitoring and optimization
-- Distributed processing capability
-
-## 🔒 Security & Compliance
-
-### Healthcare Compliance
-- HIPAA-conscious design
-- Secure image handling
-- Audit logging capabilities
-- Access control integration points
-
-### Security Features
-- Screen access permission management
-- Secure configuration storage
-- Error sanitization
-- Activity monitoring
-
-## 🛠️ Development & Testing
-
-### Development Tools
-- Comprehensive test suite
-- Code formatting (Black)
-- Type checking (MyPy)
-- Documentation generation
-
-### Testing Framework
-- Unit tests for all components
-- Integration tests for workflows
-- PACS simulation testing
-- Performance benchmarking
+1. **Automated Software Testing**: Automate UI testing for desktop applications.
+2. **Robotic Process Automation (RPA)**: Automate repetitive tasks in various software.
+3. **Data Entry and Extraction**: Automate data entry into legacy systems or extract data from them.
+4. **General UI Automation**: Automate any task that can be performed through a graphical user interface.
 
 ## 🚀 Future Enhancements
 
@@ -262,53 +172,3 @@ def analyze_chest_xray(image_path):
 3. **Mobile Support**: Tablet/mobile device compatibility
 4. **Advanced AI**: Built-in vision-language model integration
 5. **Multi-Modal**: Support for voice commands and gestures
-
-### Integration Possibilities
-- EHR system integration
-- DICOM standard compliance
-- HL7 messaging support
-- Cloud PACS connectivity
-
-## 💡 Getting Started for Your Use Case
-
-### For PACS Users
-1. Install the system following `INSTALL.md`
-2. Configure your PACS settings in `config.yaml`
-3. Test with the PACS automation example
-4. Customize workflows for your specific needs
-
-### For Developers
-1. Review the architecture documentation
-2. Check out the examples in `examples/`
-3. Extend the system with custom actions
-4. Integrate with your AI models
-
-### For Healthcare Organizations
-1. Assess compliance requirements
-2. Plan pilot deployment
-3. Train users on the system
-4. Scale to production workflows
-
-## 📞 Support & Community
-
-### Getting Help
-- Documentation in `docs/` directory
-- Example code in `examples/`
-- Issue tracking on GitHub
-- Community forums and discussions
-
-### Contributing
-- Follow development guidelines
-- Submit pull requests
-- Report bugs and feature requests
-- Share workflow templates
-
-## 📋 Conclusion
-
-The Vision Action Agent provides a solid foundation for automating PACS workflows and medical imaging tasks. With its modular architecture, comprehensive error handling, and PACS-specific optimizations, it's ready for immediate use while being extensible for future AI integration.
-
-The system successfully bridges the gap between traditional PACS interfaces and modern AI-powered analysis tools, enabling healthcare organizations to streamline their radiological workflows while preparing for AI-enhanced diagnostic capabilities.
-
----
-
-**Ready to transform your PACS workflows? Start with the basic examples and scale to full automation!**
