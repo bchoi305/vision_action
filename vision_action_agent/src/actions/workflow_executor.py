@@ -345,7 +345,10 @@ class WorkflowExecutor:
                     else:
                         screenshot = self.screen_capture.capture_full_screen()
                     ocr_result = self.ocr_detector.extract_text(screenshot)
-                    condition_result = text.lower() in ocr_result.raw_text.lower()
+                    if text is not None:
+                        condition_result = text.lower() in ocr_result.raw_text.lower()
+                    else:
+                        condition_result = False
                 elif condition_type == 'variable_equals':
                     var_name = condition_params.get('variable')
                     expected_value = condition_params.get('value')
@@ -485,7 +488,7 @@ class WorkflowExecutor:
             logger.error(f"Step {step.id} failed with exception: {e}")
             return False
     
-    def execute_workflow(self, steps: List[WorkflowStep], workflow_id: str = None) -> WorkflowResult:
+    def execute_workflow(self, steps: List[WorkflowStep], workflow_id: Optional[str] = None) -> WorkflowResult:
         """Execute a complete workflow."""
         workflow_id = workflow_id or f"workflow_{int(time.time())}"
         self.current_workflow = workflow_id
@@ -556,16 +559,37 @@ class WorkflowExecutor:
         return result
     
     def load_workflow_from_yaml(self, filepath: str) -> List[WorkflowStep]:
-        """Load workflow from YAML file."""
+        """Load workflow from YAML file.
+
+        Logs and skips steps with unknown action_type values to make issues apparent.
+        """
         try:
             with open(filepath, 'r') as file:
                 workflow_data = yaml.safe_load(file)
-            
-            steps = []
+
+            steps: List[WorkflowStep] = []
+            invalid_count = 0
+
+            # Accept a few common synonyms
+            synonym_map = {
+                'type_text': 'type',
+            }
+
             for step_data in workflow_data.get('steps', []):
+                try:
+                    raw_type = step_data.get('action_type')
+                    mapped_type = synonym_map.get(str(raw_type).lower(), raw_type)
+                    action_type = ActionType(mapped_type)
+                except Exception:
+                    invalid_count += 1
+                    logger.error(
+                        f"Unknown action_type in step '{step_data.get('id','unknown')}': {step_data.get('action_type')}"
+                    )
+                    continue
+
                 step = WorkflowStep(
                     id=step_data['id'],
-                    action_type=ActionType(step_data['action_type']),
+                    action_type=action_type,
                     parameters=step_data.get('parameters', {}),
                     description=step_data.get('description'),
                     timeout=step_data.get('timeout', 30.0),
@@ -573,10 +597,12 @@ class WorkflowExecutor:
                     continue_on_failure=step_data.get('continue_on_failure', False)
                 )
                 steps.append(step)
-            
+
             logger.info(f"Loaded {len(steps)} steps from {filepath}")
+            if invalid_count:
+                logger.error(f"Skipped {invalid_count} invalid step(s) due to unknown action_type.")
             return steps
-            
+
         except Exception as e:
             logger.error(f"Failed to load workflow from {filepath}: {e}")
             return []

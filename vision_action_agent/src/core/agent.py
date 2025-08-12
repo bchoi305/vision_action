@@ -33,11 +33,6 @@ class VisionActionAgent:
         
         self.config = self.config_manager.get_config()
         
-        # Setup logging
-        self.config_manager.setup_logging()
-        
-        logger.info("Initializing Vision Action Agent")
-        
         # Initialize core components
         self._initialize_components()
         
@@ -131,10 +126,37 @@ class VisionActionAgent:
         try:
             screenshot = self.capture_screen(region)
             
-            if image_template:
+            if image_template and element_type == ElementType.ICON:
                 elements = self.element_detector.find_element_by_image(screenshot, image_template)
-            else:
-                elements = self.element_detector.detect_all_elements(screenshot).elements
+                logger.info(f"Found {len(elements)} elements matching image template '{image_template}' for icon type.")
+                return elements
+            elif element_type == ElementType.ICON:
+                print("Calling element_detector.detect_icons_from_tf_hub...")
+                elements = self.element_detector.detect_icons_from_tf_hub(screenshot)
+                logger.info(f"Found {len(elements)} icons using TensorFlow Hub model.")
+                return elements
+            elif element_type == ElementType.BUTTON:
+                elements = self.element_detector.detect_buttons(screenshot)
+                logger.info(f"Found {len(elements)} buttons using heuristic detection.")
+                return elements
+            elif element_type == ElementType.TEXT_FIELD:
+                elements = self.element_detector.detect_text_fields(screenshot)
+                logger.info(f"Found {len(elements)} text fields using heuristic detection.")
+                return elements
+            elif element_type == ElementType.DROPDOWN:
+                elements = self.element_detector.detect_dropdown_menus(screenshot)
+                logger.info(f"Found {len(elements)} dropdowns using heuristic detection.")
+                return elements
+            elif element_type == ElementType.CHECKBOX:
+                elements = self.element_detector.detect_checkboxes(screenshot)
+                logger.info(f"Found {len(elements)} checkboxes using heuristic detection.")
+                return elements
+            elif image_template:
+                elements = self.element_detector.find_element_by_image(screenshot, image_template)
+                logger.info(f"Found {len(elements)} elements matching image template '{image_template}'.")
+                return elements
+
+            elements = self.element_detector.detect_all_elements(screenshot).elements
             
             filtered_elements = []
             for element in elements:
@@ -150,7 +172,7 @@ class VisionActionAgent:
                 if text_match and type_match:
                     filtered_elements.append(element)
             
-            logger.info(f"Found {len(filtered_elements)} elements matching criteria (text='{text}', type='{element_type}', image_template='{image_template}')")
+            logger.info(f"Found {len(filtered_elements)} elements matching criteria (text='{text}', type='{element_type}')")
             return filtered_elements
             
         except Exception as e:
@@ -173,8 +195,8 @@ class VisionActionAgent:
             True if element was found and clicked, False otherwise.
         """
         try:
-            elements = self.find_element(text, element_type, region)
-            
+            elements = self.find_element(text, element_type, region=region)
+
             if not elements:
                 logger.error(f"Element (text='{text}', type='{element_type}') not found")
                 return False
@@ -231,8 +253,8 @@ class VisionActionAgent:
             True if successful, False otherwise.
         """
         try:
-            elements = self.find_element(element_text, element_type, region)
-            
+            elements = self.find_element(element_text, element_type, region=region)
+
             if not elements:
                 logger.error(f"Element (text='{element_text}', type='{element_type}') not found for typing")
                 return False
@@ -268,19 +290,20 @@ class VisionActionAgent:
             True if element appeared, False if timeout.
         """
         start_time = time.time()
-        
-        while time.time() - start_time < timeout:
-            elements = self.find_element(text, element_type, region)
-            
-            if elements:
-                logger.info(f"Element (text='{text}', type='{element_type}') appeared after {time.time() - start_time:.2f}s")
-                return True
-            
-            time.sleep(0.5)
+        try:
+            while time.time() - start_time < timeout:
+                elements = self.find_element(text, element_type, region)
+                
+                if elements:
+                    logger.info(f"Element (text='{text}', type='{element_type}') appeared after {time.time() - start_time:.2f}s")
+                    return True
+                
+                time.sleep(0.5)
         
         except Exception as e:
             self.error_handler.handle_error(e, ErrorCategory.ELEMENT_DETECTION, context={"method": "wait_for_element", "text": text, "element_type": element_type})
             return False
+        return False
 
     def wait_for_element_to_disappear(self, text: Optional[str] = None, element_type: Optional[ElementType] = None,
                                       timeout: float = 10.0, region: Optional[CaptureRegion] = None) -> bool:
@@ -297,19 +320,20 @@ class VisionActionAgent:
             True if element disappeared, False if timeout.
         """
         start_time = time.time()
-        
-        while time.time() - start_time < timeout:
-            elements = self.find_element(text, element_type, region)
-            
-            if not elements:
-                logger.info(f"Element (text='{text}', type='{element_type}') disappeared after {time.time() - start_time:.2f}s")
-                return True
-            
-            time.sleep(0.5)
+        try:
+            while time.time() - start_time < timeout:
+                elements = self.find_element(text, element_type, region)
+                
+                if not elements:
+                    logger.info(f"Element (text='{text}', type='{element_type}') disappeared after {time.time() - start_time:.2f}s")
+                    return True
+                
+                time.sleep(0.5)
         
         except Exception as e:
             self.error_handler.handle_error(e, ErrorCategory.ELEMENT_DETECTION, context={"method": "wait_for_element_to_disappear", "text": text, "element_type": element_type})
             return False
+        return False
     
     def verify_text_present(self, text: str, region: Optional[CaptureRegion] = None) -> bool:
         """
@@ -358,7 +382,7 @@ class VisionActionAgent:
             self.error_handler.handle_error(e, ErrorCategory.SCREEN_CAPTURE, context={"method": "save_screenshot", "filepath": filepath})
             return False
     
-    def execute_workflow(self, workflow_steps: List[WorkflowStep>, 
+    def execute_workflow(self, workflow_steps: List[WorkflowStep], 
                         workflow_id: Optional[str] = None) -> WorkflowResult:
         """
         Execute a workflow using the workflow executor.

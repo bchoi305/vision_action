@@ -1,0 +1,71 @@
+steps:
+  - id: "open_login_page"
+    action_type: "open_url"
+    parameters:
+      url: "https://ymlib.yonsei.ac.kr/login/"
+
+  - id: "enter_username"
+    action_type: "type_text"
+    parameters:
+      element_text: "id"
+      text: "your_username" # Replace with your actual username
+
+  - id: "enter_password"
+    action_type: "type_text"
+    parameters:
+      element_text: "password"
+      text: "your_password" # Replace with your actual password
+
+  - id: "click_login_button"
+    action_type: "click"
+    parameters:
+      element_text: "로그인"
+
+  - id: "wait_for_page_load"
+    action_type: "wait"
+    parameters:
+      duration: 5
+
+  - id: "enter_doi"
+    action_type: "type_text"
+    parameters:
+      element_text: "검색어 입력"
+      text: "{{doi}}"
+
+  - id: "click_search_icon"
+    action_type: "custom"
+    parameters:
+      action_name: "click_image"
+      image_template: "magnifying_glass.png"
+
+  - id: "wait_for_search_results"
+    action_type: "wait"
+    parameters:
+      duration: 5
+
+  - id: "click_find_it_yonsei_button"
+    action_type: "custom"
+    parameters:
+      action_name: "click_image"
+      image_template: "find_it_yonsei.png"
+
+  - id: "wait_for_full_text_page"
+    action_type: "wait"
+    parameters:
+      duration: 5
+
+  - id: "click_go_button"
+    action_type: "click"
+    parameters:
+      element_text: "Go"
+
+  - id: "wait_for_article_page"
+    action_type: "wait"
+    parameters:
+      duration: 5
+
+  - id: "click_download_arrow"
+    action_type: "custom"
+    parameters:
+      action_name: "click_image"
+      image_template: ["download_arrow.png", "download_arrow_v2.png"] # Example: add more image files here

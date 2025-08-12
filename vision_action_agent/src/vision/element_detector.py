@@ -1,10 +1,13 @@
 import os
 import cv2
 import numpy as np
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Dict, Optional, Tuple, Union, Any
 from dataclasses import dataclass
 from enum import Enum
 from loguru import logger
+
+logger.info("element_detector.py loaded and logger initialized.")
+
 from .ocr_engine import OCRTextDetector, TextElement
 
 class ElementType(Enum):
@@ -63,161 +66,274 @@ class ElementDetector:
                     logger.error(f"Error loading template {filepath}: {e}")
     
     def detect_buttons(self, image: np.ndarray) -> List[UIElement]:
-        """Detect button elements in the image."""
+        """Detect button elements in the image using color and shape heuristics."""
         buttons = []
-        
-        # Convert to grayscale
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
-        # Edge detection
-        edges = cv2.Canny(gray, 50, 150)
-        
+
+        # Apply Gaussian blur to reduce noise and improve contour detection
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        # Use adaptive thresholding to handle varying lighting conditions
+        thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+
         # Find contours
-        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
         for contour in contours:
-            # Filter contours by area and aspect ratio
+            # Filter contours by area to exclude very small or very large regions
             area = cv2.contourArea(contour)
-            if area < 500 or area > 50000:  # Size limits for buttons
+            print(f"Contour area: {area}")
+            if area < 100 or area > 100000:  # Adjusted size limits for more general buttons
+                print("Area condition not met.")
                 continue
-            
-            # Get bounding rectangle
-            x, y, w, h = cv2.boundingRect(contour)
-            aspect_ratio = w / h
-            
-            # Check if it looks like a button (reasonable aspect ratio and color uniformity)
-            if 0.3 <= aspect_ratio <= 10:
-                # Check color uniformity (low standard deviation in color channels)
-                roi_color = image[y:y+h, x:x+w]
-                if roi_color.size > 0:
-                    std_dev_color = np.std(roi_color)
-                    if std_dev_color < 40: # Threshold for color uniformity
-                        center = (x + w // 2, y + h // 2)
-                        
-                        # Extract text from this region using OCR
-                        button_region = image[y:y+h, x:x+w]
-                        text_elements = self.ocr_detector.extract_text(button_region).elements
-                        button_text = " ".join([elem.text for elem in text_elements]) if text_elements else None
-                        
-                        button = UIElement(
-                            element_type=ElementType.BUTTON,
-                            bbox=(x, y, w, h),
-                            center=center,
-                            confidence=0.7,  # Base confidence
-                            text=button_text,
-                            attributes={"area": area, "aspect_ratio": aspect_ratio, "std_dev_color": std_dev_color}
-                        )
-                        buttons.append(button)
-        
+
+            # Approximate the contour to a polygon
+            perimeter = cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
+
+            # Check if the contour is rectangular (4 vertices)
+            if len(approx) == 4:
+                x, y, w, h = cv2.boundingRect(approx)
+                aspect_ratio = w / h
+
+                # Filter by aspect ratio typical for buttons
+                if 0.2 <= aspect_ratio <= 5.0:  # More flexible aspect ratio
+                    # Check color uniformity within the potential button region
+                    roi_color = image[y:y+h, x:x+w]
+                    if roi_color.size > 0:
+                        std_dev_color = np.std(roi_color)
+                        if std_dev_color < 30:  # Lower threshold for stricter uniformity
+                            center = (x + w // 2, y + h // 2)
+
+                            # Attempt to extract text from this region using OCR
+                            button_region_img = image[y:y+h, x:x+w]
+                            text_elements = self.ocr_detector.extract_text(button_region_img).elements
+                            button_text = " ".join([elem.text for elem in text_elements]) if text_elements else None
+
+                            buttons.append(UIElement(
+                                element_type=ElementType.BUTTON,
+                                bbox=(x, y, w, h),
+                                center=center,
+                                confidence=0.7,  # Base confidence
+                                text=button_text,
+                                attributes={
+                                    "area": area,
+                                    "aspect_ratio": aspect_ratio,
+                                    "std_dev_color": std_dev_color
+                                }
+                            ))
         return buttons
     
     def detect_text_fields(self, image: np.ndarray) -> List[UIElement]:
-        """Detect text input fields."""
+        """Detect text input fields using shape and color heuristics."""
         text_fields = []
-        
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
-        # Look for rectangular shapes that could be text fields
-        edges = cv2.Canny(gray, 30, 100)
+
+        # Apply Gaussian blur to reduce noise
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        # Use Canny edge detection to find strong edges
+        edges = cv2.Canny(blurred, 50, 150)
+
+        # Find contours in the edged image
         contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
+
         for contour in contours:
             area = cv2.contourArea(contour)
-            if area < 200 or area > 20000:
+            # Filter by area to exclude very small or very large regions
+            if area < 150 or area > 50000:
                 continue
-            
-            x, y, w, h = cv2.boundingRect(contour)
-            aspect_ratio = w / h
-            
-            # Text fields are typically wide and short with a clear background or border
-            if aspect_ratio > 2 and h < 50:
-                center = (x + w // 2, y + h // 2)
-                
-                # Check for clear background (high mean intensity) or a distinct border
-                roi = gray[y:y+h, x:x+w]
-                mean_intensity = np.mean(roi)
-                
-                # Simple border detection: check intensity variance near edges
-                border_variance = np.var(gray[y:y+h, x:x+5]) + np.var(gray[y:y+h, x+w-5:x+w]) + \
-                                  np.var(gray[y:y+5, x:x+w]) + np.var(gray[y+h-5:y+h, x:x+w])
 
-                if mean_intensity > 200 or border_variance > 500:  # Light background or significant border
-                    text_field = UIElement(
-                        element_type=ElementType.TEXT_FIELD,
-                        bbox=(x, y, w, h),
-                        center=center,
-                        confidence=0.6,
-                        attributes={"mean_intensity": mean_intensity, "border_variance": border_variance}
-                    )
-                    text_fields.append(text_field)
-        
+            # Approximate the contour to a rectangle
+            perimeter = cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
+
+            # Text fields are typically rectangular (4 vertices)
+            if len(approx) == 4:
+                x, y, w, h = cv2.boundingRect(approx)
+                aspect_ratio = w / h
+
+                # Text fields are usually wide and relatively short
+                if aspect_ratio > 2.0 and h > 15 and h < 60:  # Refined height range
+                    center = (x + w // 2, y + h // 2)
+
+                    # Analyze the region of interest (ROI) for text field characteristics
+                    roi = image[y:y+h, x:x+w]
+                    if roi.size == 0: # Skip empty regions
+                        continue
+
+                    # Check for a relatively uniform background (low standard deviation)
+                    std_dev_color = np.std(roi)
+                    if std_dev_color < 35:  # Adjusted threshold for background uniformity
+                        # Check for presence of a distinct border or background color
+                        # This can be done by analyzing pixel intensity near the edges
+                        # For simplicity, we'll check if the average intensity is high (light background)
+                        # or if there's a significant intensity change at the borders.
+                        mean_intensity = np.mean(cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY))
+
+                        # A simple check for a light background or a clear border
+                        if mean_intensity > 180 or self._has_distinct_border(gray, (x, y, w, h)): # New helper for border
+                            text_field = UIElement(
+                                element_type=ElementType.TEXT_FIELD,
+                                bbox=(x, y, w, h),
+                                center=center,
+                                confidence=0.65, # Slightly increased confidence
+                                attributes={
+                                    "mean_intensity": mean_intensity,
+                                    "std_dev_color": std_dev_color
+                                }
+                            )
+                            text_fields.append(text_field)
         return text_fields
+
+    def _has_distinct_border(self, gray_image: np.ndarray, bbox: Tuple[int, int, int, int], border_width: int = 3, intensity_diff_threshold: int = 40) -> bool:
+        """Helper to check for a distinct border around a bounding box."""
+        x, y, w, h = bbox
+        # Ensure border region is within image bounds
+        if w <= 2 * border_width or h <= 2 * border_width:
+            return False
+
+        # Extract inner and outer regions
+        inner_region = gray_image[y + border_width : y + h - border_width,
+                                  x + border_width : x + w - border_width]
+        outer_border_horizontal = np.concatenate([
+            gray_image[y : y + border_width, x : x + w],
+            gray_image[y + h - border_width : y + h, x : x + w]
+        ])
+        outer_border_vertical = np.concatenate([
+            gray_image[y : y + h, x : x + border_width],
+            gray_image[y : y + h, x + w - border_width : x + w]
+        ])
+
+        if inner_region.size == 0 or outer_border_horizontal.size == 0 or outer_border_vertical.size == 0:
+            return False
+
+        # Compare average intensity of inner region with border regions
+        avg_inner = np.mean(inner_region)
+        avg_outer_h = np.mean(outer_border_horizontal)
+        avg_outer_v = np.mean(outer_border_vertical)
+
+        # Check if there's a significant difference between inner and outer regions
+        if abs(avg_inner - avg_outer_h) > intensity_diff_threshold or \
+           abs(avg_inner - avg_outer_v) > intensity_diff_threshold:
+            return True
+        return False
     
     def detect_checkboxes(self, image: np.ndarray) -> List[UIElement]:
-        """Detect checkbox elements."""
+        """Detect checkbox elements using shape and color heuristics."""
         checkboxes = []
-        
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
-        # Template matching for checkbox detection
-        if ElementType.CHECKBOX in self.templates:
-            template = cv2.cvtColor(self.templates[ElementType.CHECKBOX], cv2.COLOR_BGR2GRAY)
-            result = cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED)
-            
-            threshold = 0.6
-            locations = np.where(result >= threshold)
-            
-            for pt in zip(*locations[::-1]):
-                x, y = pt
-                w, h = template.shape[::-1]
-                center = (x + w // 2, y + h // 2)
-                
-                checkbox = UIElement(
-                    element_type=ElementType.CHECKBOX,
-                    bbox=(x, y, w, h),
-                    center=center,
-                    confidence=result[y, x],
-                    attributes={"template_match": True}
-                )
-                checkboxes.append(checkbox)
-        
+
+        # Apply Gaussian blur to reduce noise
+        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+
+        # Use adaptive thresholding to find potential checkbox shapes
+        thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+
+        # Find contours in the thresholded image
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            # Filter by area to find square-like elements
+            if area < 50 or area > 1000:  # Typical size range for checkboxes
+                continue
+
+            perimeter = cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
+
+            # Check if the contour is square-like (4 vertices and aspect ratio close to 1)
+            if len(approx) == 4:
+                x, y, w, h = cv2.boundingRect(approx)
+                aspect_ratio = w / h
+
+                if 0.8 <= aspect_ratio <= 1.2:  # Aspect ratio for squares
+                    center = (x + w // 2, y + h // 2)
+
+                    # Further check: color uniformity within the checkbox area
+                    roi_color = image[y:y+h, x:x+w]
+                    if roi_color.size > 0:
+                        std_dev_color = np.std(roi_color)
+                        if std_dev_color < 30:  # Low standard deviation for uniform color
+                            checkboxes.append(UIElement(
+                                element_type=ElementType.CHECKBOX,
+                                bbox=(x, y, w, h),
+                                center=center,
+                                confidence=0.8,  # High confidence for strong square match
+                                attributes={
+                                    "area": area,
+                                    "aspect_ratio": aspect_ratio,
+                                    "std_dev_color": std_dev_color
+                                }
+                            ))
         return checkboxes
     
     def detect_dropdown_menus(self, image: np.ndarray) -> List[UIElement]:
-        """Detect dropdown menu elements."""
+        """Detect dropdown menu elements using shape and text heuristics."""
         dropdowns = []
-        
-        # Look for dropdown arrow patterns
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
-        # Create a simple dropdown arrow template
-        arrow_template = np.zeros((10, 10), dtype=np.uint8)
-        cv2.fillPoly(arrow_template, [np.array([[2, 3], [8, 3], [5, 7]])], 255)
-        
-        result = cv2.matchTemplate(gray, arrow_template, cv2.TM_CCOEFF_NORMED)
-        threshold = 0.7
-        locations = np.where(result >= threshold)
-        
-        for pt in zip(*locations[::-1]):
-            x, y = pt
-            
-            # Expand to include likely dropdown area
-            dropdown_x = max(0, x - 100)
-            dropdown_y = y
-            dropdown_w = min(150, image.shape[1] - dropdown_x)
-            dropdown_h = 25
-            
-            center = (dropdown_x + dropdown_w // 2, dropdown_y + dropdown_h // 2)
-            
-            dropdown = UIElement(
-                element_type=ElementType.DROPDOWN,
-                bbox=(dropdown_x, dropdown_y, dropdown_w, dropdown_h),
-                center=center,
-                confidence=result[y, x],
-                attributes={"arrow_detected": True}
-            )
-            dropdowns.append(dropdown)
-        
+
+        # Look for rectangular shapes that might contain a dropdown arrow or text
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(blurred, 50, 150)
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < 200 or area > 50000:  # Filter by reasonable size
+                continue
+
+            perimeter = cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
+
+            if len(approx) == 4:  # Look for rectangular shapes
+                x, y, w, h = cv2.boundingRect(approx)
+                aspect_ratio = w / h
+
+                # Dropdowns are typically wide and relatively short
+                if aspect_ratio > 2.0 and h > 20 and h < 70:  # Adjusted height range
+                    center = (x + w // 2, y + h // 2)
+
+                    # Check for a uniform background and potential text/arrow inside
+                    roi_color = image[y:y+h, x:x+w]
+                    if roi_color.size == 0:
+                        continue
+
+                    std_dev_color = np.std(roi_color)
+                    if std_dev_color < 40:  # Relatively uniform background
+                        # Attempt to extract text from this region using OCR
+                        dropdown_region_img = image[y:y+h, x:x+w]
+                        text_elements = self.ocr_detector.extract_text(dropdown_region_img).elements
+                        dropdown_text = " ".join([elem.text for elem in text_elements]) if text_elements else None
+
+                        # Check for common dropdown indicators (e.g., a small triangle/arrow)
+                        # This is a simple heuristic, can be improved with template matching for arrows
+                        has_arrow_indicator = False
+                        # A very basic check for a dark triangle shape (common for dropdowns)
+                        arrow_roi = gray[y:y+h, x + w - 30 : x + w] # Look at the right side for an arrow
+                        if arrow_roi.size > 0:
+                            _, arrow_thresh = cv2.threshold(arrow_roi, 150, 255, cv2.THRESH_BINARY_INV)
+                            arrow_contours, _ = cv2.findContours(arrow_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                            for arrow_cnt in arrow_contours:
+                                if cv2.contourArea(arrow_cnt) > 10 and cv2.contourArea(arrow_cnt) < 100: # Small arrow size
+                                    has_arrow_indicator = True
+                                    break
+
+                        if dropdown_text or has_arrow_indicator:
+                            dropdown = UIElement(
+                                element_type=ElementType.DROPDOWN,
+                                bbox=(x, y, w, h),
+                                center=center,
+                                confidence=0.7,  # Base confidence
+                                text=dropdown_text,
+                                attributes={
+                                    "area": area,
+                                    "aspect_ratio": aspect_ratio,
+                                    "std_dev_color": std_dev_color,
+                                    "has_arrow": has_arrow_indicator
+                                }
+                            )
+                            dropdowns.append(dropdown)
         return dropdowns
     
     def detect_images(self, image: np.ndarray, min_size: int = 1000) -> List[UIElement]:
@@ -446,6 +562,73 @@ class ElementDetector:
             logger.info(f"Found {len(found_elements)} instances of template '{template_name}' with confidence >= {confidence_threshold:.2f}")
         else:
             logger.debug(f"No instances of template '{template_name}' found with confidence >= {confidence_threshold:.2f}")
+
+        return found_elements
+
+    def detect_icons_from_tf_hub(self, image: np.ndarray, confidence_threshold: float = 0.5) -> List[UIElement]:
+        """
+        Detects icons in an image using a pre-trained model from TensorFlow Hub.
+
+        Args:
+            image: The image to process.
+            confidence_threshold: The minimum confidence score to consider a detection.
+
+        Returns:
+            A list of UIElement objects representing the detected icons.
+        """
+        # Import TensorFlow and TF Hub lazily to avoid import-time failures when not needed
+        try:
+            import tensorflow as tf  # type: ignore
+            import tensorflow_hub as hub  # type: ignore
+        except Exception as e:
+            logger.error(f"TensorFlow/TF Hub not available: {e}")
+            return []
+
+        # Load the model from TensorFlow Hub
+        model_url = "https://tfhub.dev/google/ssd/mobilenet_v2/2"
+        logger.debug(f"Attempting to load TensorFlow Hub model from: {model_url}")
+        detector = hub.load(model_url)
+        logger.info("TensorFlow Hub model loaded successfully.")
+        logger.debug("TensorFlow Hub model loaded and ready for inference.")
+
+        # Preprocess the image for the model
+        # Convert BGR to RGB
+        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # Normalize pixel values to [0, 1]
+        normalized_image = rgb_image / 255.0
+        # Convert to a TensorFlow tensor and add batch dimension
+        input_tensor = tf.convert_to_tensor(normalized_image, dtype=tf.float32)
+        input_tensor = input_tensor[tf.newaxis, ...]
+        logger.debug(f"Input tensor shape: {input_tensor.shape}, dtype: {input_tensor.dtype}")
+
+        # Run the model
+        result = detector(input_tensor)
+
+        # Process the results
+        result = {key: value.numpy() for key, value in result.items()}
+        boxes = result["detection_boxes"][0]
+        scores = result["detection_scores"][0]
+        classes = result["detection_classes"][0]
+
+        found_elements = []
+        for i in range(boxes.shape[0]):
+            if scores[i] >= confidence_threshold:
+                ymin, xmin, ymax, xmax = tuple(boxes[i])
+                im_height, im_width, _ = image.shape
+                (left, right, top, bottom) = (xmin * im_width, xmax * im_width,
+                                              ymin * im_height, ymax * im_height)
+                
+                x, y, w, h = int(left), int(top), int(right - left), int(bottom - top)
+                center = (x + w // 2, y + h // 2)
+                
+                # Create a UIElement for the found icon
+                found_elements.append(UIElement(
+                    element_type=ElementType.ICON,
+                    bbox=(x, y, w, h),
+                    center=center,
+                    confidence=scores[i],
+                    attributes={"class_id": classes[i]}
+                ))
 
         return found_elements
 

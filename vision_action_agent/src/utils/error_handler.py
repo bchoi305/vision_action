@@ -357,9 +357,9 @@ class ErrorHandler:
             return {"total_errors": 0}
         
         total_errors = len(self.error_history)
-        errors_by_category = {}
-        errors_by_severity = {}
-        recovery_success_rate = 0
+        errors_by_category: Dict[str, int] = {}
+        errors_by_severity: Dict[str, int] = {}
+        recovery_success_rate: float = 0.0
         
         for error in self.error_history:
             # Count by category

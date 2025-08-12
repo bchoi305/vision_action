@@ -1,0 +1,84 @@
+{
+  "workflow_load_s": 0.012683005999861052,
+  "steps": [
+    {
+      "index": 1,
+      "id": "open_login_page",
+      "action": "open_url",
+      "duration_s": 0.0101
+    },
+    {
+      "index": 2,
+      "id": "enter_username",
+      "action": "type_text",
+      "duration_s": 0.0101
+    },
+    {
+      "index": 3,
+      "id": "enter_password",
+      "action": "type_text",
+      "duration_s": 0.0102
+    },
+    {
+      "index": 4,
+      "id": "click_login_button",
+      "action": "click",
+      "duration_s": 0.0101
+    },
+    {
+      "index": 5,
+      "id": "wait_for_page_load",
+      "action": "wait",
+      "duration_s": 0.0101
+    },
+    {
+      "index": 6,
+      "id": "enter_doi",
+      "action": "type_text",
+      "duration_s": 0.0101
+    },
+    {
+      "index": 7,
+      "id": "click_search_icon",
+      "action": "custom",
+      "duration_s": 0.0101
+    },
+    {
+      "index": 8,
+      "id": "wait_for_search_results",
+      "action": "wait",
+      "duration_s": 0.0101
+    },
+    {
+      "index": 9,
+      "id": "click_find_it_yonsei_button",
+      "action": "custom",
+      "duration_s": 0.0101
+    },
+    {
+      "index": 10,
+      "id": "wait_for_full_text_page",
+      "action": "wait",
+      "duration_s": 0.0101
+    },
+    {
+      "index": 11,
+      "id": "click_go_button",
+      "action": "click",
+      "duration_s": 0.0101
+    },
+    {
+      "index": 12,
+      "id": "wait_for_article_page",
+      "action": "wait",
+      "duration_s": 0.0102
+    },
+    {
+      "index": 13,
+      "id": "click_download_arrow",
+      "action": "custom",
+      "duration_s": 0.0102
+    }
+  ],
+  "total_wall_time_s": 0.1527
+}
